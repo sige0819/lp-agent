@@ -6,17 +6,18 @@ on:
         description: 'Sheet row JSON'
         required: false
         type: string
-      CONFIRM_DEPLOY:
-        description: 'Deploy to Manas? (true/false)'
-        required: false
-        type: boolean
-        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      CONFIRM_DEPLOY: ${{ github.event.inputs.CONFIRM_DEPLOY }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,30 +26,14 @@ jobs:
       - name: Save brief
         if: ${{ github.event.inputs.row != '' }}
         run: echo '${{ github.event.inputs.row }}' > brief.json
-      - run: |
-          mkdir -p out && echo "<html><body>LP preview</body></html>" > out/index.html
-      - name: Await your confirmation
-        if: ${{ env.CONFIRM_DEPLOY != 'true' }}
+      - name: Build static site
         run: |
-          echo "\u26F3 \u624B\u52D5\u627F\u8A8D\u5F85\u3061\uFF1A\u3053\u306E\u30B8\u30E7\u30D6\u306F\u30C7\u30D7\u30ED\u30A4\u3057\u307E\u305B\u3093\u3002"
-          echo "\u518D\u5B9F\u884C\u6642\u306B input \u3067 CONFIRM_DEPLOY=true \u3092\u6307\u5B9A\u3057\u3066\u304F\u3060\u3055\u3044\u3002"
-          exit 0
-      - name: Zip artifact (for upload type)
-        if: ${{ env.CONFIRM_DEPLOY == 'true' }}
-        run: cd out && zip -r ../site.zip . && cd ..
-      - name: Deploy to Manas
-        if: ${{ env.CONFIRM_DEPLOY == 'true' }}
-        env:
-          MANAS_ENDPOINT: ${{ secrets.MANAS_ENDPOINT }}
-          MANAS_TOKEN: ${{ secrets.MANAS_TOKEN }}
-        run: |
-          # --- A) JSON Pull \u578B\uFF08\u4F8B\uFF09 ---
-          # curl -sS -X POST "$MANAS_ENDPOINT" \
-          #   -H "Authorization: Bearer $MANAS_TOKEN" \
-          #   -H "Content-Type: application/json" \
-          #   -d '{"artifact_url":"https://example.com/site.zip","meta":{"project":"lp-agent","branch":"'"${GITHUB_REF_NAME}"'"}}'
-          # --- B) \u30D5\u30A1\u30A4\u30EB Upload \u578B\uFF08\u4F8B\uFF09 ---
-          curl -sS -X POST "$MANAS_ENDPOINT" \
-            -H "Authorization: Bearer $MANAS_TOKEN" \
-            -F "file=@site.zip" \
-            -F 'meta={"project":"lp-agent","branch":"'"${GITHUB_REF_NAME}"'"}'
+          mkdir -p out
+          echo "<html><body>LP preview</body></html>" > out/index.html
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
